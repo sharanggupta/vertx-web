@@ -18,7 +18,6 @@ import io.vertx.ext.web.validation.builder.Parsers;
 import io.vertx.ext.web.validation.builder.ValidationHandlerBuilder;
 import io.vertx.ext.web.validation.impl.ParameterLocation;
 import io.vertx.ext.web.validation.impl.parser.ValueParser;
-import io.vertx.json.schema.common.dsl.GenericSchemaBuilder;
 import io.vertx.json.schema.common.dsl.ObjectSchemaBuilder;
 import io.vertx.json.schema.common.dsl.SchemaBuilder;
 import io.vertx.junit5.Checkpoint;
@@ -53,6 +52,7 @@ import static io.vertx.json.schema.common.dsl.Schemas.intSchema;
 import static io.vertx.json.schema.common.dsl.Schemas.numberSchema;
 import static io.vertx.json.schema.common.dsl.Schemas.objectSchema;
 import static io.vertx.json.schema.common.dsl.Schemas.ref;
+import static io.vertx.json.schema.common.dsl.Schemas.refToAlias;
 import static io.vertx.json.schema.common.dsl.Schemas.stringSchema;
 
 /**
@@ -132,7 +132,7 @@ public class ValidationHandlerProcessorsIntegrationTest extends BaseValidationHa
   }
 
   @Test
-  @Disabled("Due to an issue with circular references, which is not understood yet.")
+  @Disabled("Parameter schemas are not dereferenced, so their $ref (here tree_schema.json#) is never resolved, see #2456")
   public void testQueryJsonObjectAsyncParam(Checkpoint checkpoint) {
     CountDownLatch latch = checkpoint.asLatch(2);
 
@@ -888,12 +888,13 @@ public class ValidationHandlerProcessorsIntegrationTest extends BaseValidationHa
   }
 
   @Test
-  @Disabled("Due to an issue with circular references, which is not understood yet.")
   public void testJsonBodyAsyncCircular(@TempDir Path tempDir, Checkpoint checkpoint) {
     CountDownLatch latch = checkpoint.asLatch(2);
 
-    SchemaBuilder childs = arraySchema().items(new GenericSchemaBuilder().withKeyword("$ref", "#"));
-    SchemaBuilder treeSchema = objectSchema().requiredProperty("value", stringSchema()).property("childs", childs);
+    // Every schema built with the DSL gets its own generated $id, so a "#" reference would point to the
+    // referencing schema itself. The DSL refers to an enclosing schema through its alias instead.
+    SchemaBuilder childs = arraySchema().items(refToAlias("tree"));
+    SchemaBuilder treeSchema = objectSchema().alias("tree").requiredProperty("value", stringSchema()).property("childs", childs);
 
     ValidationHandler validationHandler1 = ValidationHandlerBuilder.create(schemaRepo)
       .body(Bodies.json(treeSchema))
